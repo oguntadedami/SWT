@@ -1,6 +1,13 @@
 // components/plan/pdf/PlanPdfDocument.tsx
-// Faithful "Print Edition" of the Front Page design on /plan.
-// Built with @react-pdf/renderer primitives, vector graphics, and shared design tokens.
+// PDF representation mirroring the redesigned Build Plan at /plan:
+// - A4 page, 40pt margins, page background #FAFAF7
+// - Vector-only layout (no images, no external network requests)
+// - Sky band with gradient, sun glow, and layered hills
+// - Three chapters (THE IDEA, THE SCOPE, THE START) with sky bands and bright white panels
+// - Inter font registration with automatic fallback to built-in Helvetica / Helvetica-Bold
+// - Courier font used only inside the AI prompt block
+// - Running header on pages > 1 and running footer on all pages
+// - Metadata: title "<product name>: Build Plan", subject "Build Plan"
 
 import React from 'react';
 import {
@@ -11,30 +18,25 @@ import {
   StyleSheet,
   Font,
   Svg,
-  Path,
+  Defs,
+  LinearGradient,
+  RadialGradient,
+  Stop,
   Rect,
   Circle,
-  Polygon,
-  Line,
+  Ellipse,
+  Path,
 } from '@react-pdf/renderer';
-import {
-  PlanDocument,
-  cleanPdfText,
-} from '@/lib/planDocument';
-import {
-  PLAN_COLORS,
-  PLAN_TYPE_SIZES,
-  PDF_PAPER_BACKGROUND,
-} from '@/lib/planTheme';
+import { PlanDocument, cleanPdfText } from '@/lib/planDocument';
+import { PLAN_COLORS } from '@/lib/planTheme';
 
-// Disable automatic hyphenation so words never break oddly
+// Disable automatic hyphenation across all PDF text
 Font.registerHyphenationCallback((word) => [word]);
 
-// Attempt to register custom fonts from public/fonts folder.
-// If missing or in node/ssr without network, falls back to standard PDF fonts.
-let fontsRegistered = false;
+// Attempt to register Inter font files from public/fonts
+let fontsInitialized = false;
 export function initPdfFonts() {
-  if (fontsRegistered) return;
+  if (fontsInitialized) return;
   try {
     const origin =
       typeof window !== 'undefined' && window.location?.origin
@@ -42,38 +44,20 @@ export function initPdfFonts() {
         : '';
 
     Font.register({
-      family: 'HeadlineHeavy',
-      src: `${origin}/fonts/headline-heavy.ttf`,
-    });
-
-    Font.register({
-      family: 'NewsSerif',
+      family: 'Inter',
       fonts: [
-        {
-          src: `${origin}/fonts/serif-regular.ttf`,
-          fontWeight: 'normal',
-          fontStyle: 'normal',
-        },
-        {
-          src: `${origin}/fonts/serif-italic.ttf`,
-          fontWeight: 'normal',
-          fontStyle: 'italic',
-        },
-        {
-          src: `${origin}/fonts/serif-bold.ttf`,
-          fontWeight: 'bold',
-          fontStyle: 'normal',
-        },
+        { src: `${origin}/fonts/Inter-Regular.ttf`, fontWeight: 'normal' },
+        { src: `${origin}/fonts/Inter-Medium.ttf`, fontWeight: 500 },
+        { src: `${origin}/fonts/Inter-Bold.ttf`, fontWeight: 'bold' },
+        { src: `${origin}/fonts/Inter-Black.ttf`, fontWeight: 900 },
       ],
     });
-
-    fontsRegistered = true;
-  } catch (e) {
-    console.warn('Font registration fallback to system standard', e);
+    fontsInitialized = true;
+  } catch (err) {
+    console.warn('Inter font registration failed, fallback to Helvetica', err);
   }
 }
 
-// Call on module evaluation
 initPdfFonts();
 
 interface PlanPdfDocumentProps {
@@ -87,1167 +71,818 @@ export default function PlanPdfDocument({
   accentColor = PLAN_COLORS.accentOrange,
   useFallbackFonts = false,
 }: PlanPdfDocumentProps) {
-  // Use custom font family if available, else built-in PDF fonts
-  const headlineFont = useFallbackFonts ? 'Helvetica-Bold' : 'HeadlineHeavy';
-  const serifFont = useFallbackFonts ? 'Times-Roman' : 'NewsSerif';
-  const serifItalicFont = useFallbackFonts ? 'Times-Italic' : 'NewsSerif';
-  const serifBoldFont = useFallbackFonts ? 'Times-Bold' : 'NewsSerif';
-  const monoFont = 'Courier';
+  const fontRegular = useFallbackFonts ? 'Helvetica' : 'Inter';
+  const fontBold = useFallbackFonts ? 'Helvetica-Bold' : 'Inter';
+  const fontMono = 'Courier';
 
   const isIdea1 = doc.ideaId === 'idea-1';
   const isIdea2 = doc.ideaId === 'idea-2';
   const isIdea3 = doc.ideaId === 'idea-3';
 
-  // Format today's date
-  let todayFormatted = 'October 9, 2026';
-  try {
-    todayFormatted = new Intl.DateTimeFormat('en-US', {
-      month: 'long',
-      day: 'numeric',
-      year: 'numeric',
-    }).format(new Date());
-  } catch {
-    // ignore
-  }
-
-  // Lead words for Section 02 problem
-  const problemWords = cleanPdfText(doc.problem).split(' ');
-  const problemLead = problemWords.slice(0, 4).join(' ').toUpperCase();
-  const problemRest = problemWords.slice(4).join(' ');
-
-  const pageBg = PDF_PAPER_BACKGROUND
-    ? PLAN_COLORS.paper
-    : PLAN_COLORS.paperWhite;
+  const cleanTitle = cleanPdfText(doc.title);
+  const cleanDef = cleanPdfText(doc.definition);
+  const cleanProblem = cleanPdfText(doc.problem);
+  const cleanTarget = cleanPdfText(doc.targetUser);
+  const cleanMvp = cleanPdfText(doc.mvpSummary);
+  const cleanAdjustment = doc.adjustmentNote ? cleanPdfText(doc.adjustmentNote) : null;
+  const cleanWhyFits = doc.whyFitsYou ? cleanPdfText(doc.whyFitsYou) : null;
+  const cleanPrompt = cleanPdfText(doc.starterPrompt);
 
   const styles = StyleSheet.create({
     page: {
-      backgroundColor: pageBg,
+      backgroundColor: '#FAFAF7',
       paddingTop: 40,
-      paddingBottom: 48,
+      paddingBottom: 40,
       paddingLeft: 40,
       paddingRight: 40,
-      fontSize: PLAN_TYPE_SIZES.body,
-      color: PLAN_COLORS.ink,
-      fontFamily: serifFont,
+      fontFamily: fontRegular,
+      fontSize: 9.5,
+      color: '#1F2937',
       lineHeight: 1.45,
     },
 
-    // Running Header (Pages > 1)
-    runningHeaderContainer: {
+    // Running Header (pages > 1)
+    runningHeader: {
       position: 'absolute',
       top: 18,
       left: 40,
       right: 40,
-    },
-    runningHeaderRow: {
-      flexDirection: 'row',
-      justifyContent: 'space-between',
-      alignItems: 'baseline',
-      paddingBottom: 4,
-    },
-    runningHeaderText: {
-      fontSize: 7.5,
-      fontFamily: headlineFont,
-      textTransform: 'uppercase',
-      color: PLAN_COLORS.muted,
-      letterSpacing: 0.5,
-    },
-    runningHeaderEdition: {
-      fontSize: 7,
-      fontFamily: monoFont,
-      color: PLAN_COLORS.muted,
-    },
-    runningHeaderRule: {
-      height: 0.5,
-      backgroundColor: PLAN_COLORS.hairline,
-      width: '100%',
+      fontSize: 8,
+      color: '#6B7280',
+      textAlign: 'center',
+      fontFamily: fontRegular,
     },
 
-    // Running Footer (All pages)
+    // Running Footer (every page)
     runningFooter: {
       position: 'absolute',
-      bottom: 20,
+      bottom: 18,
       left: 40,
       right: 40,
       flexDirection: 'row',
       justifyContent: 'space-between',
-      alignItems: 'center',
-      borderTopWidth: 0.5,
-      borderTopColor: PLAN_COLORS.hairline,
-      paddingTop: 5,
-    },
-    footerPageNum: {
-      fontSize: 7.5,
-      fontFamily: monoFont,
-      color: PLAN_COLORS.muted,
-    },
-    footerBrand: {
-      fontSize: 7.5,
-      fontFamily: headlineFont,
-      textTransform: 'uppercase',
-      color: PLAN_COLORS.muted,
-      letterSpacing: 0.5,
+      fontSize: 8,
+      color: '#9CA3AF',
+      fontFamily: fontRegular,
     },
 
-    // Masthead
-    mastheadContainer: {
-      marginBottom: 10,
+    // Header Band Container (Page 1)
+    headerBandContainer: {
+      borderRadius: 16,
+      overflow: 'hidden',
+      height: 250,
+      position: 'relative',
+      marginBottom: 14,
     },
-    mastheadTopRow: {
-      flexDirection: 'row',
-      alignItems: 'center',
+    headerBandContent: {
+      position: 'absolute',
+      top: 0,
+      left: 0,
+      right: 0,
+      bottom: 0,
+      padding: 20,
       justifyContent: 'space-between',
-      paddingBottom: 6,
-    },
-    mastheadCenter: {
-      flex: 1,
       alignItems: 'center',
-      paddingHorizontal: 8,
-    },
-    mastheadKicker: {
-      fontSize: PLAN_TYPE_SIZES.mastheadKicker,
-      fontFamily: monoFont,
-      textTransform: 'uppercase',
-      letterSpacing: 2,
-      color: PLAN_COLORS.muted,
-      marginBottom: 3,
-    },
-    mastheadTitle: {
-      fontSize: PLAN_TYPE_SIZES.masthead,
-      fontFamily: headlineFont,
-      textTransform: 'uppercase',
-      color: PLAN_COLORS.ink,
-      letterSpacing: -0.5,
       textAlign: 'center',
     },
-    doubleRule: {
-      marginVertical: 4,
-    },
-    ruleThick: {
-      height: 2,
-      backgroundColor: PLAN_COLORS.ink,
-      width: '100%',
-    },
-    ruleSpacer: {
-      height: 1.5,
-    },
-    ruleThin: {
-      height: 0.75,
-      backgroundColor: PLAN_COLORS.ink,
-      width: '100%',
-    },
-    datelineRow: {
-      flexDirection: 'row',
-      justifyContent: 'space-between',
-      paddingTop: 3,
-      paddingBottom: 2,
-    },
-    datelineLeft: {
-      fontSize: PLAN_TYPE_SIZES.dateline,
-      fontFamily: serifItalicFont,
-      color: PLAN_COLORS.muted,
-    },
-    datelineRight: {
-      fontSize: PLAN_TYPE_SIZES.dateline,
-      fontFamily: headlineFont,
-      textTransform: 'uppercase',
-      color: PLAN_COLORS.ink,
-      letterSpacing: 0.5,
-    },
-
-    // Section 01: Headline & Deck
-    headlineSection: {
-      marginTop: 8,
-      marginBottom: 8,
-    },
-    kicker: {
-      fontSize: PLAN_TYPE_SIZES.kicker,
-      fontFamily: monoFont,
-      textTransform: 'uppercase',
-      letterSpacing: 1.5,
-      marginBottom: 3,
+    headerShapeArea: {
+      alignItems: 'center',
+      justifyContent: 'center',
+      height: 52,
     },
     productTitle: {
-      fontSize: PLAN_TYPE_SIZES.productHeadline,
-      fontFamily: headlineFont,
+      fontFamily: fontBold,
+      fontWeight: useFallbackFonts ? 'normal' : 900,
+      fontSize: 26,
+      color: '#FFFFFF',
       textTransform: 'uppercase',
-      color: PLAN_COLORS.ink,
-      lineHeight: 0.95,
-      marginBottom: 5,
+      letterSpacing: 0.5,
+      textAlign: 'center',
+      lineHeight: 1.15,
+      maxWidth: 460,
     },
-    productDeck: {
-      fontSize: PLAN_TYPE_SIZES.deck,
-      fontFamily: serifItalicFont,
-      color: PLAN_COLORS.inkSecondary,
-      lineHeight: 1.3,
+    productDefinition: {
+      fontFamily: fontRegular,
+      fontSize: 11,
+      color: '#F0F9FF',
+      textAlign: 'center',
+      maxWidth: 440,
+      lineHeight: 1.35,
     },
 
-    // Stats Strip (4 Equal Columns)
-    statsStrip: {
-      borderTopWidth: 0.75,
-      borderTopColor: PLAN_COLORS.hairline,
-      borderBottomWidth: 0.75,
-      borderBottomColor: PLAN_COLORS.hairline,
-      paddingVertical: 5,
-      marginVertical: 8,
+    // Sticker Tags Row
+    stickersRow: {
       flexDirection: 'row',
+      justifyContent: 'center',
+      alignItems: 'center',
+      gap: 8,
+      marginBottom: 16,
     },
-    statsCol: {
-      flex: 1,
-      paddingHorizontal: 6,
-      borderRightWidth: 0.5,
-      borderRightColor: PLAN_COLORS.hairline,
-    },
-    statsColLast: {
-      borderRightWidth: 0,
-    },
-    statsLabel: {
-      fontSize: PLAN_TYPE_SIZES.statsLabel,
-      fontFamily: monoFont,
-      textTransform: 'uppercase',
-      color: PLAN_COLORS.muted,
-      marginBottom: 1,
-    },
-    statsValue: {
-      fontSize: PLAN_TYPE_SIZES.statsValue,
-      fontFamily: headlineFont,
-      color: PLAN_COLORS.ink,
-    },
-
-    // Two-Column Body Layout (66% and 34%)
-    bodyTwoColumns: {
+    stickerTag: {
       flexDirection: 'row',
-      marginVertical: 6,
+      alignItems: 'center',
+      paddingVertical: 4,
+      paddingHorizontal: 8,
+      borderRadius: 10,
     },
-    bodyMainCol: {
-      width: '66%',
-      paddingRight: 12,
+    stickerLabel: {
+      fontSize: 8,
+      color: '#FFFFFF',
+      opacity: 0.9,
+      marginRight: 3,
     },
-    bodySidebarCol: {
-      width: '34%',
-      paddingLeft: 12,
-      borderLeftWidth: 0.5,
-      borderLeftColor: PLAN_COLORS.hairline,
+    stickerValue: {
+      fontSize: 8,
+      fontFamily: fontBold,
+      color: '#FFFFFF',
     },
 
-    // Section 02 The Problem
-    problemText: {
-      fontSize: PLAN_TYPE_SIZES.body,
-      fontFamily: serifFont,
-      lineHeight: 1.45,
-      color: PLAN_COLORS.ink,
+    // Chapter Sky Band
+    chapterBandContainer: {
+      borderRadius: 12,
+      overflow: 'hidden',
+      height: 60,
+      position: 'relative',
+      marginTop: 14,
       marginBottom: 8,
     },
-    problemLead: {
-      fontFamily: headlineFont,
-      letterSpacing: 0.5,
-      color: PLAN_COLORS.ink,
-    },
-
-    // Section 04 MVP Ruled Band
-    mvpBand: {
-      marginTop: 6,
-      marginBottom: 4,
-    },
-    mvpThickRule: {
-      height: 2,
-      backgroundColor: PLAN_COLORS.ink,
-      width: '100%',
-      marginBottom: 5,
-    },
-    mvpThinRule: {
-      height: 0.5,
-      backgroundColor: PLAN_COLORS.hairline,
-      width: '100%',
-      marginTop: 6,
-    },
-    mvpSubheading: {
-      fontSize: PLAN_TYPE_SIZES.sectionSubheading,
-      fontFamily: serifItalicFont,
-      color: PLAN_COLORS.muted,
-      marginBottom: 3,
-    },
-    mvpSummaryText: {
-      fontSize: 10.5,
-      fontFamily: serifFont,
-      lineHeight: 1.35,
-      color: PLAN_COLORS.ink,
-    },
-    adjustmentNoteText: {
-      fontSize: 8,
-      fontFamily: serifItalicFont,
-      color: PLAN_COLORS.muted,
-      marginTop: 4,
-      paddingTop: 3,
-      borderTopWidth: 0.5,
-      borderTopColor: PLAN_COLORS.hairlineLight,
-    },
-
-    // Section 03 Sidebar Who it's for
-    sidebarTitle: {
-      fontSize: PLAN_TYPE_SIZES.sectionHeading,
-      fontFamily: headlineFont,
-      textTransform: 'uppercase',
-      color: PLAN_COLORS.ink,
-      marginBottom: 3,
-    },
-    targetUserText: {
-      fontSize: PLAN_TYPE_SIZES.bodySmall,
-      fontFamily: serifFont,
-      color: PLAN_COLORS.inkSecondary,
-      lineHeight: 1.35,
-      marginBottom: 6,
-    },
-    illustrationBox: {
-      height: 44,
-      backgroundColor: 'rgba(0,0,0,0.03)',
-      borderWidth: 0.5,
-      borderColor: PLAN_COLORS.hairline,
-      borderRadius: 4,
-      marginVertical: 4,
+    chapterBandContent: {
+      position: 'absolute',
+      top: 0,
+      left: 0,
+      right: 0,
+      bottom: 0,
+      paddingHorizontal: 16,
       justifyContent: 'center',
       alignItems: 'center',
     },
-    pullQuoteContainer: {
-      marginTop: 6,
-      paddingTop: 4,
-      borderTopWidth: 0.5,
-      borderTopColor: PLAN_COLORS.hairline,
+    chapterHeading: {
+      fontFamily: fontBold,
+      fontWeight: useFallbackFonts ? 'normal' : 900,
+      fontSize: 17,
+      color: '#FFFFFF',
+      textTransform: 'uppercase',
+      letterSpacing: 0.5,
     },
-    pullQuoteText: {
-      fontSize: 9.5,
-      fontFamily: serifItalicFont,
-      color: PLAN_COLORS.ink,
-      lineHeight: 1.35,
+
+    // White Panel Box
+    panel: {
+      backgroundColor: '#FFFFFF',
+      borderRadius: 14,
+      borderWidth: 1,
+      borderColor: '#E5E7EB',
+      padding: 16,
+      marginBottom: 12,
     },
-    pullQuoteMarks: {
-      fontFamily: serifBoldFont,
+
+    // Number circle badge
+    numberBadge: {
+      width: 18,
+      height: 18,
+      borderRadius: 9,
+      alignItems: 'center',
+      justifyContent: 'center',
+      marginRight: 6,
+    },
+    numberBadgeText: {
+      fontSize: 8,
+      fontFamily: fontBold,
+      color: '#FFFFFF',
+    },
+
+    // Chapter 1 Styles
+    productSentence: {
       fontSize: 13,
-      color: accentColor,
-    },
-    pullQuoteCaption: {
-      fontSize: 6.5,
-      fontFamily: monoFont,
-      textTransform: 'uppercase',
-      color: PLAN_COLORS.muted,
-      marginTop: 3,
-    },
-
-    // Section 05 & 06 The Ledger
-    ledgerContainer: {
-      marginVertical: 8,
-    },
-    ledgerHeader: {
-      borderBottomWidth: 0.5,
-      borderBottomColor: PLAN_COLORS.hairline,
-      paddingBottom: 2,
-      marginBottom: 6,
-    },
-    ledgerCols: {
-      flexDirection: 'row',
-    },
-    ledgerColLeft: {
-      flex: 1,
-      paddingRight: 10,
-    },
-    ledgerColRight: {
-      flex: 1,
-      paddingLeft: 10,
-      borderLeftWidth: 0.5,
-      borderLeftColor: PLAN_COLORS.hairline,
-    },
-    ledgerSectionHeader: {
-      flexDirection: 'row',
-      justifyContent: 'space-between',
-      alignItems: 'baseline',
-      borderBottomWidth: 1,
-      borderBottomColor: PLAN_COLORS.ink,
-      paddingBottom: 2,
-      marginBottom: 5,
-    },
-    ledgerSectionHeaderMuted: {
-      flexDirection: 'row',
-      justifyContent: 'space-between',
-      alignItems: 'baseline',
-      borderBottomWidth: 1,
-      borderBottomColor: PLAN_COLORS.muted,
-      paddingBottom: 2,
-      marginBottom: 5,
-    },
-    subTitleItalic: {
-      fontSize: 7.5,
-      fontFamily: serifItalicFont,
-      color: PLAN_COLORS.muted,
-    },
-    ledgerItemRow: {
-      flexDirection: 'row',
-      alignItems: 'flex-start',
-      marginBottom: 5,
-    },
-    ledgerCheckCol: {
-      width: 12,
-      paddingTop: 1,
-    },
-    ledgerItemBody: {
-      flex: 1,
-    },
-    ledgerItemName: {
-      fontSize: 8.5,
-      fontFamily: headlineFont,
-      color: PLAN_COLORS.ink,
-    },
-    ledgerItemReason: {
-      fontSize: 7.5,
-      fontFamily: serifFont,
-      color: PLAN_COLORS.muted,
+      fontFamily: fontBold,
+      color: '#111827',
       lineHeight: 1.3,
+      marginBottom: 12,
     },
-    ledgerItemNameMuted: {
-      fontSize: 8.5,
-      fontFamily: headlineFont,
-      color: PLAN_COLORS.muted,
-    },
-    ledgerDash: {
-      fontSize: 8,
-      fontFamily: monoFont,
-      color: PLAN_COLORS.muted,
-      width: 10,
-    },
-
-    // Section 07 Tool Stack Table
-    toolTableSection: {
-      marginVertical: 8,
-    },
-    tableHeaderRow: {
+    twoCols: {
       flexDirection: 'row',
-      borderBottomWidth: 1,
-      borderBottomColor: PLAN_COLORS.ink,
-      paddingBottom: 3,
-      marginBottom: 3,
+      gap: 12,
+      marginBottom: 12,
     },
-    tableHeaderCell: {
-      fontSize: 7,
-      fontFamily: monoFont,
-      textTransform: 'uppercase',
-      color: PLAN_COLORS.muted,
-    },
-    tableRow: {
-      flexDirection: 'row',
-      borderBottomWidth: 0.5,
-      borderBottomColor: PLAN_COLORS.hairlineLight,
-      paddingVertical: 3.5,
-    },
-    colTool: { width: '28%', paddingRight: 6 },
-    colDoes: { width: '32%', paddingRight: 6 },
-    colFree: { width: '14%', paddingRight: 4 },
-    colWatch: { width: '26%' },
-    toolName: {
-      fontSize: 8.5,
-      fontFamily: headlineFont,
-      color: PLAN_COLORS.ink,
-    },
-    toolWhy: {
-      fontSize: 7,
-      fontFamily: serifItalicFont,
-      color: PLAN_COLORS.muted,
-    },
-    cellText: {
-      fontSize: 7.5,
-      fontFamily: serifFont,
-      color: PLAN_COLORS.inkSecondary,
-      lineHeight: 1.3,
-    },
-    cellTextBold: {
-      fontSize: 7.5,
-      fontFamily: headlineFont,
-      color: PLAN_COLORS.ink,
-    },
-
-    // Section 08 Schedule
-    scheduleSection: {
-      marginVertical: 8,
-    },
-    scheduleGrid: {
-      flexDirection: 'row',
-      marginTop: 4,
-    },
-    scheduleCol: {
+    col: {
       flex: 1,
-      paddingRight: 8,
-      borderRightWidth: 0.5,
-      borderRightColor: PLAN_COLORS.hairline,
-      paddingLeft: 6,
     },
-    scheduleColFirst: {
-      paddingLeft: 0,
-    },
-    scheduleColLast: {
-      borderRightWidth: 0,
-      paddingRight: 0,
-    },
-    stageHeader: {
+    sectionTitleRow: {
       flexDirection: 'row',
-      justifyContent: 'space-between',
-      alignItems: 'baseline',
-      marginBottom: 2,
-    },
-    stageNumeral: {
-      fontSize: 18,
-      fontFamily: headlineFont,
-      color: accentColor,
-      lineHeight: 1,
-    },
-    stageTag: {
-      fontSize: 6,
-      fontFamily: monoFont,
-      textTransform: 'uppercase',
-      borderWidth: 0.5,
-      borderColor: accentColor,
-      color: accentColor,
-      paddingHorizontal: 3,
-      paddingVertical: 1,
-      borderRadius: 2,
-    },
-    stageTitle: {
-      fontSize: 8.5,
-      fontFamily: headlineFont,
-      color: PLAN_COLORS.ink,
-      marginBottom: 1,
-    },
-    stageDuration: {
-      fontSize: 6.5,
-      fontFamily: monoFont,
-      color: PLAN_COLORS.muted,
-      marginBottom: 3,
-    },
-    stageGoal: {
-      fontSize: 7.5,
-      fontFamily: serifItalicFont,
-      color: PLAN_COLORS.inkSecondary,
-      lineHeight: 1.3,
-      marginBottom: 3,
-    },
-    stageTasksHeader: {
-      fontSize: 6.5,
-      fontFamily: monoFont,
-      textTransform: 'uppercase',
-      color: PLAN_COLORS.muted,
-      marginTop: 2,
-      marginBottom: 1,
-    },
-    taskItem: {
-      fontSize: 7,
-      fontFamily: serifFont,
-      color: PLAN_COLORS.inkSecondary,
-      lineHeight: 1.25,
-      marginBottom: 1.5,
-    },
-    doneWhenBox: {
-      backgroundColor: 'rgba(0,0,0,0.03)',
-      borderWidth: 0.5,
-      borderColor: PLAN_COLORS.hairline,
-      borderRadius: 3,
-      padding: 4,
-      marginTop: 4,
-    },
-    doneWhenLabel: {
-      fontSize: 6.5,
-      fontFamily: headlineFont,
-      color: PLAN_COLORS.ink,
-      marginBottom: 1,
-    },
-    doneWhenText: {
-      fontSize: 7,
-      fontFamily: serifFont,
-      color: PLAN_COLORS.inkSecondary,
-      lineHeight: 1.25,
-    },
-
-    // Section 09 Dispatch
-    dispatchSection: {
-      marginVertical: 8,
-    },
-    dispatchLead: {
-      fontSize: 8,
-      fontFamily: serifItalicFont,
-      color: PLAN_COLORS.muted,
+      alignItems: 'center',
       marginBottom: 4,
     },
-    dispatchBlock: {
-      backgroundColor: PLAN_COLORS.dispatchBg,
+    sectionTitle: {
+      fontFamily: fontBold,
+      fontSize: 10,
+      color: '#111827',
+    },
+    sectionBody: {
+      fontSize: 9,
+      color: '#4B5563',
+      lineHeight: 1.4,
+    },
+
+    // MVP Highlight Band
+    mvpBand: {
+      borderRadius: 10,
       padding: 10,
-      borderRadius: 4,
-      borderWidth: 1,
-      borderColor: PLAN_COLORS.ink,
-    },
-    dispatchHeaderRow: {
-      flexDirection: 'row',
-      justifyContent: 'space-between',
-      borderBottomWidth: 0.5,
-      borderBottomColor: '#374151',
-      paddingBottom: 3,
       marginBottom: 6,
+      borderWidth: 1,
     },
-    dispatchHeaderLabel: {
-      fontSize: 6.5,
-      fontFamily: monoFont,
-      textTransform: 'uppercase',
-      color: '#9CA3AF',
+    mvpSummaryText: {
+      fontFamily: fontBold,
+      fontSize: 10.5,
+      color: '#111827',
+      lineHeight: 1.35,
     },
-    dispatchPromptText: {
-      fontFamily: monoFont,
-      fontSize: 7,
-      color: PLAN_COLORS.dispatchText,
+    noteText: {
+      fontSize: 8.5,
+      color: '#6B7280',
+      marginTop: 4,
+    },
+    whyFitsSticker: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      paddingVertical: 4,
+      paddingHorizontal: 8,
+      borderRadius: 8,
+      borderWidth: 1,
+      alignSelf: 'flex-start',
+      marginTop: 8,
+    },
+
+    // Chapter 2 Styles
+    scopeHeaderRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      marginBottom: 8,
+      gap: 6,
+    },
+    scopePill: {
+      paddingVertical: 2.5,
+      paddingHorizontal: 6,
+      borderRadius: 6,
+    },
+    scopePillText: {
+      fontSize: 7.5,
+      fontFamily: fontBold,
+      color: '#FFFFFF',
+    },
+    scopeItem: {
+      flexDirection: 'row',
+      alignItems: 'flex-start',
+      marginBottom: 8,
+      gap: 5,
+    },
+    scopeItemBody: {
+      flex: 1,
+    },
+    scopeItemName: {
+      fontSize: 9,
+      fontFamily: fontBold,
+      color: '#111827',
+    },
+    scopeItemReason: {
+      fontSize: 8.5,
+      color: '#4B5563',
+      marginTop: 1,
       lineHeight: 1.35,
     },
 
-    // Fine Print Footer
-    finePrintSection: {
-      marginTop: 10,
-      paddingTop: 6,
-      borderTopWidth: 2,
-      borderTopColor: PLAN_COLORS.ink,
+    // Chapter 3 Styles
+    toolRow: {
       flexDirection: 'row',
-      justifyContent: 'space-between',
-      alignItems: 'baseline',
+      paddingVertical: 7,
+      borderBottomWidth: 1,
+      borderBottomColor: '#F3F4F6',
+      alignItems: 'flex-start',
     },
-    finePrintText: {
+    toolColLeft: {
+      width: '32%',
+      paddingRight: 6,
+    },
+    toolColMid: {
+      width: '36%',
+      paddingRight: 6,
+    },
+    toolColRight: {
+      width: '32%',
+    },
+
+    // Roadmap Tiles
+    roadmapRow: {
+      flexDirection: 'row',
+      gap: 8,
+      marginTop: 6,
+    },
+    stageTile: {
+      flex: 1,
+      backgroundColor: '#F9FAFB',
+      borderRadius: 8,
+      borderWidth: 1,
+      borderColor: '#E5E7EB',
+      padding: 8,
+    },
+
+    // Prompt Block
+    promptBlock: {
+      backgroundColor: '#0B1320',
+      borderRadius: 10,
+      padding: 10,
+      marginTop: 6,
+    },
+    promptText: {
+      fontFamily: fontMono,
       fontSize: 7.5,
-      fontFamily: serifItalicFont,
-      color: PLAN_COLORS.muted,
-      maxWidth: '75%',
+      color: '#FEF3C7',
+      lineHeight: 1.35,
     },
-    finePrintBrand: {
-      fontSize: 7,
-      fontFamily: headlineFont,
-      textTransform: 'uppercase',
-      color: PLAN_COLORS.ink,
-      letterSpacing: 0.5,
+
+    // Footer Disclaimer
+    disclaimer: {
+      fontSize: 8,
+      color: '#6B7280',
+      textAlign: 'center',
+      marginTop: 10,
     },
   });
 
   return (
     <Document
-      title={`${cleanPdfText(doc.title)} — Build Plan Print Edition`}
+      title={`${cleanTitle}: Build Plan`}
+      subject="Build Plan"
       author="Start With This"
-      subject="Complete Build Plan"
-      keywords="startup, mvp, build plan, print edition"
     >
       <Page size="A4" style={styles.page}>
-        {/* ============================================================== */}
-        {/* RUNNING HEADER (Appears on Pages 2+)                           */}
-        {/* ============================================================== */}
-        <View fixed style={styles.runningHeaderContainer}>
-          <View style={styles.runningHeaderRow}>
-            <Text
-              style={styles.runningHeaderText}
-              render={({ pageNumber }) =>
-                pageNumber > 1
-                  ? `Start With This  *  ${cleanPdfText(doc.title)}`
-                  : ''
-              }
-            />
-            <Text
-              style={styles.runningHeaderEdition}
-              render={({ pageNumber }) =>
-                pageNumber > 1 ? 'Print Edition' : ''
-              }
-            />
-          </View>
-          <View
-            render={({ pageNumber }) =>
-              pageNumber > 1 ? <View style={styles.runningHeaderRule} /> : null
-            }
-          />
-        </View>
+        {/* Running Header on pages > 1 */}
+        <Text
+          style={styles.runningHeader}
+          render={({ pageNumber }) =>
+            pageNumber > 1 ? `Start With This * ${cleanTitle}` : ''
+          }
+          fixed
+        />
 
-        {/* ============================================================== */}
-        {/* RUNNING FOOTER (Appears on all pages)                          */}
-        {/* ============================================================== */}
-        <View fixed style={styles.runningFooter}>
+        {/* Running Footer on all pages */}
+        <View style={styles.runningFooter} fixed>
           <Text
-            style={styles.footerPageNum}
             render={({ pageNumber, totalPages }) =>
               `Page ${pageNumber} of ${totalPages}`
             }
           />
-          <Text style={styles.footerBrand}>Made with Start With This</Text>
+          <Text>Made with Start With This</Text>
         </View>
 
-        {/* ============================================================== */}
-        {/* 1. MASTHEAD                                                    */}
-        {/* ============================================================== */}
-        <View style={styles.mastheadContainer}>
-          <View style={styles.mastheadTopRow}>
-            {/* Left Shape: Circle (Red if idea-1, else ink) */}
-            <Svg width="22" height="22" viewBox="0 0 22 22">
-              <Circle
-                cx="11"
-                cy="11"
-                r="9"
-                fill={isIdea1 ? accentColor : PLAN_COLORS.ink}
-              />
-            </Svg>
+        {/* ============================================================ */}
+        {/* PAGE 1: HEADER SKY BAND (250pt tall vector SVG)              */}
+        {/* ============================================================ */}
+        <View style={styles.headerBandContainer}>
+          {/* Vector SVG Background with Sky Gradient, Sun, and Hills */}
+          <Svg width="515" height="250" viewBox="0 0 515 250">
+            <Defs>
+              <LinearGradient id="hdrSkyGrad" x1="0" y1="0" x2="0" y2="1">
+                <Stop offset="0" stopColor="#0284C7" />
+                <Stop offset="0.65" stopColor="#38BDF8" />
+                <Stop offset="1" stopColor="#BAE6FD" />
+              </LinearGradient>
+              <RadialGradient id="hdrSunGlow" cx="50%" cy="50%" r="50%">
+                <Stop offset="0" stopColor="#FEF08A" stopOpacity="0.8" />
+                <Stop offset="0.5" stopColor="#FDE047" stopOpacity="0.4" />
+                <Stop offset="1" stopColor="#38BDF8" stopOpacity="0" />
+              </RadialGradient>
+              <RadialGradient id="shpSphere" cx="35%" cy="30%" r="65%">
+                <Stop offset="0" stopColor="#FFA07A" />
+                <Stop offset="0.55" stopColor="#FF4F24" />
+                <Stop offset="1" stopColor="#9C2405" />
+              </RadialGradient>
+              <LinearGradient id="shpPill" x1="0" y1="0" x2="1" y2="0">
+                <Stop offset="0" stopColor="#2BB0E4" />
+                <Stop offset="0.5" stopColor="#56C8F2" />
+                <Stop offset="1" stopColor="#1E8AB5" />
+              </LinearGradient>
+              <LinearGradient id="shpWedge" x1="0" y1="0" x2="1" y2="1">
+                <Stop offset="0" stopColor="#96ECCF" />
+                <Stop offset="0.5" stopColor="#65D9B3" />
+                <Stop offset="1" stopColor="#1E8C67" />
+              </LinearGradient>
+            </Defs>
 
-            {/* Center Masthead Display Title */}
-            <View style={styles.mastheadCenter}>
-              <Text style={styles.mastheadKicker}>
-                The Builder&apos;s Gazette  *  Vol. I
-              </Text>
-              <Text style={styles.mastheadTitle}>START WITH THIS</Text>
-            </View>
+            {/* Sky Background Rect */}
+            <Rect x="0" y="0" width="515" height="250" fill="url(#hdrSkyGrad)" />
 
-            {/* Right Shapes: Pill & Triangle */}
-            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-              {/* Blue Pill */}
-              <Svg width="14" height="22" viewBox="0 0 14 22">
-                <Rect
-                  x="2"
-                  y="2"
-                  width="10"
-                  height="18"
-                  rx="5"
-                  fill={isIdea2 ? accentColor : PLAN_COLORS.ink}
-                />
-              </Svg>
-              <View style={{ width: 4 }} />
-              {/* Green Triangle */}
-              <Svg width="18" height="18" viewBox="0 0 18 18">
-                <Polygon
-                  points="3,2 16,9 3,16"
-                  fill={isIdea3 ? accentColor : PLAN_COLORS.ink}
-                />
-              </Svg>
-            </View>
-          </View>
+            {/* Sun Glow */}
+            <Circle cx="390" cy="70" r="55" fill="url(#hdrSunGlow)" />
 
-          {/* Double Rule */}
-          <View style={styles.doubleRule}>
-            <View style={styles.ruleThick} />
-            <View style={styles.ruleSpacer} />
-            <View style={styles.ruleThin} />
-          </View>
+            {/* Three Layered Hill Silhouettes */}
+            {/* Hill 3 (Back) */}
+            <Path
+              d="M 0 205 Q 140 175 280 200 Q 400 220 515 195 L 515 250 L 0 250 Z"
+              fill="#93C5FD"
+              fillOpacity="0.55"
+            />
+            {/* Hill 2 (Middle) */}
+            <Path
+              d="M 0 218 Q 170 190 320 218 Q 430 232 515 212 L 515 250 L 0 250 Z"
+              fill="#6EE7B7"
+              fillOpacity="0.75"
+            />
+            {/* Hill 1 (Front) */}
+            <Path
+              d="M 0 230 Q 120 210 250 226 Q 380 240 515 226 L 515 250 L 0 250 Z"
+              fill="#10B981"
+              fillOpacity="0.9"
+            />
+          </Svg>
 
-          {/* Dateline Row */}
-          <View style={styles.datelineRow}>
-            <Text style={styles.datelineLeft}>
-              Printed {todayFormatted}
-            </Text>
-            <Text style={styles.datelineRight}>
-              Edition for {cleanPdfText(doc.title)}
-            </Text>
-          </View>
-        </View>
-
-        {/* ============================================================== */}
-        {/* 2. SECTION 01: THE PRODUCT                                     */}
-        {/* ============================================================== */}
-        <View style={styles.headlineSection}>
-          <Text style={[styles.kicker, { color: accentColor }]}>
-            01 * The product
-          </Text>
-          <Text style={styles.productTitle}>{cleanPdfText(doc.title)}</Text>
-          <Text style={styles.productDeck}>
-            {cleanPdfText(doc.definition)}
-          </Text>
-        </View>
-
-        {/* ============================================================== */}
-        {/* 3. STATS STRIP (4 EQUAL COLUMNS)                               */}
-        {/* ============================================================== */}
-        <View style={styles.statsStrip}>
-          <View style={styles.statsCol}>
-            <Text style={styles.statsLabel}>Build time</Text>
-            <Text style={styles.statsValue}>
-              {cleanPdfText(doc.atAGlance.buildTime)}
-            </Text>
-          </View>
-          <View style={styles.statsCol}>
-            <Text style={styles.statsLabel}>Difficulty</Text>
-            <Text style={styles.statsValue}>
-              {cleanPdfText(doc.atAGlance.difficulty)}
-            </Text>
-          </View>
-          <View style={styles.statsCol}>
-            <Text style={styles.statsLabel}>Tools</Text>
-            <Text style={styles.statsValue}>{doc.atAGlance.toolsCount} tools</Text>
-          </View>
-          <View style={[styles.statsCol, styles.statsColLast]}>
-            <Text style={styles.statsLabel}>Stages</Text>
-            <Text style={styles.statsValue}>{doc.atAGlance.stagesCount} stages</Text>
-          </View>
-        </View>
-
-        {/* ============================================================== */}
-        {/* 4. TWO-COLUMN BODY LAYOUT (66% / 34%)                          */}
-        {/* ============================================================== */}
-        <View style={styles.bodyTwoColumns} wrap={false}>
-          {/* Main Column (66%): 02 Problem & 04 MVP */}
-          <View style={styles.bodyMainCol}>
-            {/* 02 · The Problem */}
-            <Text style={[styles.kicker, { color: accentColor }]}>
-              02 * The problem
-            </Text>
-            <Text style={styles.problemText}>
-              <Text style={styles.problemLead}>{problemLead} </Text>
-              {problemRest}
-            </Text>
-
-            {/* 04 · The MVP */}
-            <View style={styles.mvpBand}>
-              <View style={styles.mvpThickRule} />
-              <View
-                style={{
-                  flexDirection: 'row',
-                  justifyContent: 'space-between',
-                  marginBottom: 2,
-                }}
-              >
-                <Text style={[styles.kicker, { color: accentColor }]}>
-                  04 * The MVP
-                </Text>
-                <Text style={styles.mvpSubheading}>
-                  The smallest version worth building
-                </Text>
-              </View>
-              <Text style={styles.mvpSummaryText}>
-                {cleanPdfText(doc.mvpSummary)}
-              </Text>
-              {doc.adjustmentNote ? (
-                <Text style={styles.adjustmentNoteText}>
-                  A note on this plan: {cleanPdfText(doc.adjustmentNote)}
-                </Text>
-              ) : null}
-              <View style={styles.mvpThinRule} />
-            </View>
-          </View>
-
-          {/* Sidebar Column (34%): 03 Who it's for, Shape Illustration, Pull Quote */}
-          <View style={styles.bodySidebarCol}>
-            <Text style={[styles.kicker, { color: accentColor }]}>
-              03 * Who it&apos;s for
-            </Text>
-            <Text style={styles.sidebarTitle}>The Target User</Text>
-            <Text style={styles.targetUserText}>
-              {cleanPdfText(doc.targetUser)}
-            </Text>
-
-            {/* Large Brand Shape Illustration */}
-            <View style={styles.illustrationBox}>
+          {/* Overlaid Content: Brand Shape, Product Name, Definition */}
+          <View style={styles.headerBandContent}>
+            {/* Brand Shape Vector */}
+            <View style={styles.headerShapeArea}>
               {isIdea1 && (
-                <Svg width="80" height="38" viewBox="0 0 80 38">
-                  <Circle cx="40" cy="19" r="17" fill={accentColor} />
+                <Svg width="48" height="48" viewBox="0 0 48 48">
+                  <Ellipse cx="24" cy="44" rx="14" ry="3.5" fill="#000000" fillOpacity="0.25" />
+                  <Circle cx="24" cy="22" r="18" fill="url(#shpSphere)" />
+                  <Ellipse cx="19" cy="16" rx="6" ry="4" fill="#FFFFFF" fillOpacity="0.7" />
+                  <Circle cx="17" cy="14" r="1.5" fill="#FFFFFF" fillOpacity="0.9" />
                 </Svg>
               )}
               {isIdea2 && (
-                <Svg width="80" height="38" viewBox="0 0 80 38">
-                  <Rect
-                    x="28"
-                    y="3"
-                    width="24"
-                    height="32"
-                    rx="12"
-                    fill={accentColor}
-                  />
+                <Svg width="44" height="48" viewBox="0 0 44 48">
+                  <Ellipse cx="22" cy="44" rx="13" ry="3.5" fill="#000000" fillOpacity="0.25" />
+                  <Rect x="12" y="4" width="20" height="36" rx="10" fill="url(#shpPill)" />
+                  <Rect x="15" y="8" width="4" height="24" rx="2" fill="#FFFFFF" fillOpacity="0.65" />
+                  <Ellipse cx="22" cy="9" rx="3.5" ry="1.8" fill="#FFFFFF" fillOpacity="0.85" />
                 </Svg>
               )}
               {isIdea3 && (
-                <Svg width="80" height="38" viewBox="0 0 80 38">
-                  <Polygon points="24,4 58,19 24,34" fill={accentColor} />
+                <Svg width="48" height="48" viewBox="0 0 48 48">
+                  <Ellipse cx="24" cy="44" rx="15" ry="3.5" fill="#000000" fillOpacity="0.25" />
+                  <Path
+                    d="M 10 7 C 10 4 14 3 17 5 L 39 19 C 42 21 42 25 39 27 L 17 41 C 14 43 10 42 10 39 Z"
+                    fill="url(#shpWedge)"
+                  />
+                  <Circle cx="17" cy="8" r="2.5" fill="#FFFFFF" fillOpacity="0.85" />
                 </Svg>
               )}
             </View>
 
-            {/* Pull Quote (if whyFitsYou present) */}
-            {doc.whyFitsYou ? (
-              <View style={styles.pullQuoteContainer}>
-                <Text style={styles.pullQuoteText}>
-                  <Text style={styles.pullQuoteMarks}>“</Text>
-                  {cleanPdfText(doc.whyFitsYou)}
-                  <Text style={styles.pullQuoteMarks}>”</Text>
-                </Text>
-                <Text style={styles.pullQuoteCaption}>On why this fits you</Text>
-              </View>
-            ) : null}
+            {/* Product Name in Huge White Inter Black */}
+            <Text style={styles.productTitle}>{cleanTitle}</Text>
+
+            {/* Product Definition in White */}
+            <Text style={styles.productDefinition}>{cleanDef}</Text>
           </View>
         </View>
 
-        {/* ============================================================== */}
-        {/* 5. THE LEDGER: 05 WHAT TO BUILD & 06 WHAT NOT TO BUILD YET     */}
-        {/* ============================================================== */}
-        <View style={styles.ledgerContainer} wrap={false}>
-          <View style={styles.ledgerHeader}>
-            <Text
-              style={{
-                fontSize: 7,
-                fontFamily: monoFont,
-                textTransform: 'uppercase',
-                letterSpacing: 1,
-                color: PLAN_COLORS.muted,
-              }}
-            >
-              The Ledger  *  Scope of Editions
-            </Text>
+        {/* ============================================================ */}
+        {/* ROW OF FOUR STICKER TAGS                                     */}
+        {/* ============================================================ */}
+        <View style={styles.stickersRow}>
+          {/* Build time (Red) */}
+          <View style={[styles.stickerTag, { backgroundColor: '#FF4F24' }]}>
+            <Text style={styles.stickerLabel}>Build time:</Text>
+            <Text style={styles.stickerValue}>{cleanPdfText(doc.atAGlance.buildTime)}</Text>
           </View>
 
-          <View style={styles.ledgerCols}>
-            {/* Left Column: 05 What to build (first edition) */}
-            <View style={styles.ledgerColLeft}>
-              <View style={styles.ledgerSectionHeader}>
-                <Text style={[styles.kicker, { color: accentColor }]}>
-                  05 * What to build
-                </Text>
-                <Text style={styles.subTitleItalic}>In the first edition</Text>
+          {/* Difficulty (Blue) */}
+          <View style={[styles.stickerTag, { backgroundColor: '#327AE6' }]}>
+            <Text style={styles.stickerLabel}>Difficulty:</Text>
+            <Text style={styles.stickerValue}>{cleanPdfText(doc.atAGlance.difficulty)}</Text>
+          </View>
+
+          {/* Tools count (Green) */}
+          <View style={[styles.stickerTag, { backgroundColor: '#2EAA7B' }]}>
+            <Text style={styles.stickerLabel}>Tools:</Text>
+            <Text style={styles.stickerValue}>{doc.atAGlance.toolsCount} tools</Text>
+          </View>
+
+          {/* Stages count (Ink) */}
+          <View style={[styles.stickerTag, { backgroundColor: '#1F2421' }]}>
+            <Text style={styles.stickerLabel}>Stages:</Text>
+            <Text style={styles.stickerValue}>{doc.atAGlance.stagesCount} stages</Text>
+          </View>
+        </View>
+
+        {/* ============================================================ */}
+        {/* CHAPTER 1: THE IDEA                                          */}
+        {/* ============================================================ */}
+        <View minPresenceAhead={70}>
+          <View style={styles.chapterBandContainer} wrap={false}>
+            <Svg width="515" height="60" viewBox="0 0 515 60">
+              <Defs>
+                <LinearGradient id="ch1Grad" x1="0" y1="0" x2="0" y2="1">
+                  <Stop offset="0" stopColor="#0284C7" />
+                  <Stop offset="1" stopColor="#38BDF8" />
+                </LinearGradient>
+              </Defs>
+              <Rect x="0" y="0" width="515" height="60" fill="url(#ch1Grad)" />
+              <Path
+                d="M 0 46 Q 160 36 300 48 Q 420 54 515 44 L 515 60 L 0 60 Z"
+                fill="#10B981"
+                fillOpacity="0.8"
+              />
+            </Svg>
+            <View style={styles.chapterBandContent}>
+              <Text style={styles.chapterHeading}>THE IDEA</Text>
+            </View>
+          </View>
+
+          <View style={styles.panel}>
+            {/* 01 The product: definition as large bold sentence */}
+            <Text style={styles.productSentence}>{cleanDef}</Text>
+
+            {/* 02 Problem & 03 Target user side-by-side */}
+            <View style={styles.twoCols}>
+              <View style={styles.col}>
+                <View style={styles.sectionTitleRow}>
+                  <View style={[styles.numberBadge, { backgroundColor: accentColor }]}>
+                    <Text style={styles.numberBadgeText}>02</Text>
+                  </View>
+                  <Text style={styles.sectionTitle}>The problem</Text>
+                </View>
+                <Text style={styles.sectionBody}>{cleanProblem}</Text>
               </View>
 
-              {doc.buildNow.map((item, idx) => (
-                <View
-                  key={`build-now-${idx}`}
-                  style={styles.ledgerItemRow}
-                  wrap={false}
-                >
-                  <View style={styles.ledgerCheckCol}>
-                    <Svg width="8" height="8" viewBox="0 0 10 10">
+              <View style={styles.col}>
+                <View style={styles.sectionTitleRow}>
+                  <View style={[styles.numberBadge, { backgroundColor: accentColor }]}>
+                    <Text style={styles.numberBadgeText}>03</Text>
+                  </View>
+                  <Text style={styles.sectionTitle}>The target user</Text>
+                </View>
+                <Text style={styles.sectionBody}>{cleanTarget}</Text>
+              </View>
+            </View>
+
+            {/* 04 The MVP highlighted band */}
+            <View
+              style={[
+                styles.mvpBand,
+                {
+                  backgroundColor: `${accentColor}1A`,
+                  borderColor: `${accentColor}33`,
+                },
+              ]}
+            >
+              <View style={styles.sectionTitleRow}>
+                <View style={[styles.numberBadge, { backgroundColor: accentColor }]}>
+                  <Text style={styles.numberBadgeText}>04</Text>
+                </View>
+                <Text style={styles.sectionTitle}>The MVP</Text>
+              </View>
+              <Text style={styles.mvpSummaryText}>{cleanMvp}</Text>
+              {cleanAdjustment && (
+                <Text style={styles.noteText}>
+                  A note on this plan: {cleanAdjustment}
+                </Text>
+              )}
+            </View>
+
+            {/* Why it fits you sticker at bottom */}
+            {cleanWhyFits && (
+              <View
+                style={[
+                  styles.whyFitsSticker,
+                  {
+                    backgroundColor: `${accentColor}15`,
+                    borderColor: `${accentColor}40`,
+                  },
+                ]}
+              >
+                <Text style={{ fontSize: 8, fontFamily: fontBold, color: accentColor, marginRight: 4 }}>
+                  Why it fits you:
+                </Text>
+                <Text style={{ fontSize: 8, color: '#1F2937' }}>{cleanWhyFits}</Text>
+              </View>
+            )}
+          </View>
+        </View>
+
+        {/* ============================================================ */}
+        {/* CHAPTER 2: THE SCOPE                                         */}
+        {/* ============================================================ */}
+        <View minPresenceAhead={70}>
+          <View style={styles.chapterBandContainer} wrap={false}>
+            <Svg width="515" height="60" viewBox="0 0 515 60">
+              <Defs>
+                <LinearGradient id="ch2Grad" x1="0" y1="0" x2="0" y2="1">
+                  <Stop offset="0" stopColor="#0284C7" />
+                  <Stop offset="1" stopColor="#38BDF8" />
+                </LinearGradient>
+              </Defs>
+              <Rect x="0" y="0" width="515" height="60" fill="url(#ch2Grad)" />
+              <Path
+                d="M 0 46 Q 160 36 300 48 Q 420 54 515 44 L 515 60 L 0 60 Z"
+                fill="#10B981"
+                fillOpacity="0.8"
+              />
+            </Svg>
+            <View style={styles.chapterBandContent}>
+              <Text style={styles.chapterHeading}>THE SCOPE</Text>
+            </View>
+          </View>
+
+          <View style={styles.panel}>
+            <View style={styles.twoCols}>
+              {/* Left Column: BUILD NOW */}
+              <View style={styles.col}>
+                <View style={styles.scopeHeaderRow}>
+                  <View style={[styles.scopePill, { backgroundColor: '#2EAA7B' }]}>
+                    <Text style={styles.scopePillText}>BUILD NOW</Text>
+                  </View>
+                  <Text style={styles.sectionTitle}>What to build</Text>
+                </View>
+
+                {doc.buildNow.map((item, idx) => (
+                  <View key={idx} style={styles.scopeItem} wrap={false}>
+                    <Svg width="12" height="12" viewBox="0 0 16 16">
                       <Path
-                        d="M1 5l3 3 5-6"
+                        d="M 3 8 L 6.5 11.5 L 13 4"
                         stroke={accentColor}
-                        strokeWidth="1.8"
+                        strokeWidth="2.5"
                         fill="none"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
                       />
                     </Svg>
+                    <View style={styles.scopeItemBody}>
+                      <Text style={styles.scopeItemName}>{cleanPdfText(item.name)}</Text>
+                      <Text style={styles.scopeItemReason}>{cleanPdfText(item.reason)}</Text>
+                    </View>
                   </View>
-                  <View style={styles.ledgerItemBody}>
-                    <Text style={styles.ledgerItemName}>
-                      {cleanPdfText(item.name)}
-                    </Text>
-                    <Text style={styles.ledgerItemReason}>
-                      {cleanPdfText(item.reason)}
-                    </Text>
-                  </View>
-                </View>
-              ))}
-            </View>
-
-            {/* Right Column: 06 What not to build yet (held for later edition) */}
-            <View style={styles.ledgerColRight}>
-              <View style={styles.ledgerSectionHeaderMuted}>
-                <Text
-                  style={[
-                    styles.kicker,
-                    { color: accentColor, opacity: 0.8 },
-                  ]}
-                >
-                  06 * What not to build yet
-                </Text>
-                <Text style={styles.subTitleItalic}>
-                  Held for a later edition
-                </Text>
+                ))}
               </View>
 
-              {doc.doNotBuildYet.map((item, idx) => (
-                <View
-                  key={`not-yet-${idx}`}
-                  style={styles.ledgerItemRow}
-                  wrap={false}
-                >
-                  <Text style={styles.ledgerDash}>-</Text>
-                  <View style={styles.ledgerItemBody}>
-                    <Text style={styles.ledgerItemNameMuted}>
-                      {cleanPdfText(item.name)}
-                    </Text>
-                    <Text style={styles.ledgerItemReason}>
-                      {cleanPdfText(item.reason)}
-                    </Text>
+              {/* Right Column: NOT YET (Visibly Quieter) */}
+              <View style={[styles.col, { backgroundColor: '#F9FAFB', padding: 8, borderRadius: 8 }]}>
+                <View style={styles.scopeHeaderRow}>
+                  <View style={[styles.scopePill, { backgroundColor: '#E5E7EB' }]}>
+                    <Text style={[styles.scopePillText, { color: '#4B5563' }]}>NOT YET</Text>
                   </View>
+                  <Text style={[styles.sectionTitle, { color: '#4B5563' }]}>What not to build yet</Text>
                 </View>
-              ))}
+
+                {doc.doNotBuildYet.map((item, idx) => (
+                  <View key={idx} style={styles.scopeItem} wrap={false}>
+                    <Text style={{ fontSize: 10, color: '#9CA3AF', marginRight: 2 }}>-</Text>
+                    <View style={styles.scopeItemBody}>
+                      <Text style={[styles.scopeItemName, { color: '#4B5563' }]}>{cleanPdfText(item.name)}</Text>
+                      <Text style={[styles.scopeItemReason, { color: '#6B7280' }]}>{cleanPdfText(item.reason)}</Text>
+                    </View>
+                  </View>
+                ))}
+              </View>
             </View>
           </View>
         </View>
 
-        {/* ============================================================== */}
-        {/* 6. SECTION 07: THE TOOL STACK TABLE                            */}
-        {/* ============================================================== */}
-        <View style={styles.toolTableSection} wrap={false}>
-          <View
-            style={{
-              flexDirection: 'row',
-              justifyContent: 'space-between',
-              alignItems: 'baseline',
-              borderBottomWidth: 1,
-              borderBottomColor: PLAN_COLORS.ink,
-              paddingBottom: 2,
-              marginBottom: 4,
-            }}
-          >
-            <Text style={[styles.kicker, { color: accentColor }]}>
-              07 * The tool stack
-            </Text>
-            <Text style={styles.subTitleItalic}>
-              Tools selected for immediate utility
-            </Text>
-          </View>
-
-          {/* Table Header */}
-          <View style={styles.tableHeaderRow}>
-            <Text style={[styles.tableHeaderCell, styles.colTool]}>Tool</Text>
-            <Text style={[styles.tableHeaderCell, styles.colDoes]}>
-              What it does
-            </Text>
-            <Text style={[styles.tableHeaderCell, styles.colFree]}>
-              Free option
-            </Text>
-            <Text style={[styles.tableHeaderCell, styles.colWatch]}>
-              Watch out for
-            </Text>
-          </View>
-
-          {/* Table Rows */}
-          {doc.toolStack.map((tool, idx) => (
-            <View key={`tool-row-${idx}`} style={styles.tableRow} wrap={false}>
-              <View style={styles.colTool}>
-                <Text style={styles.toolName}>{cleanPdfText(tool.name)}</Text>
-                <Text style={styles.toolWhy}>{cleanPdfText(tool.whyHere)}</Text>
-              </View>
-              <View style={styles.colDoes}>
-                <Text style={styles.cellText}>
-                  {cleanPdfText(tool.whatItDoes)}
-                </Text>
-              </View>
-              <View style={styles.colFree}>
-                <Text style={styles.cellTextBold}>
-                  {cleanPdfText(tool.freeOption)}
-                </Text>
-              </View>
-              <View style={styles.colWatch}>
-                <Text style={styles.cellText}>
-                  {cleanPdfText(tool.limitation)}
-                </Text>
-              </View>
+        {/* ============================================================ */}
+        {/* CHAPTER 3: THE START                                         */}
+        {/* ============================================================ */}
+        <View minPresenceAhead={70}>
+          <View style={styles.chapterBandContainer} wrap={false}>
+            <Svg width="515" height="60" viewBox="0 0 515 60">
+              <Defs>
+                <LinearGradient id="ch3Grad" x1="0" y1="0" x2="0" y2="1">
+                  <Stop offset="0" stopColor="#0284C7" />
+                  <Stop offset="1" stopColor="#38BDF8" />
+                </LinearGradient>
+              </Defs>
+              <Rect x="0" y="0" width="515" height="60" fill="url(#ch3Grad)" />
+              <Path
+                d="M 0 46 Q 160 36 300 48 Q 420 54 515 44 L 515 60 L 0 60 Z"
+                fill="#10B981"
+                fillOpacity="0.8"
+              />
+            </Svg>
+            <View style={styles.chapterBandContent}>
+              <Text style={styles.chapterHeading}>THE START</Text>
             </View>
-          ))}
-        </View>
-
-        {/* ============================================================== */}
-        {/* 7. SECTION 08: THE BUILD ROADMAP (THE SCHEDULE)                */}
-        {/* ============================================================== */}
-        <View style={styles.scheduleSection} wrap={false}>
-          <View
-            style={{
-              flexDirection: 'row',
-              justifyContent: 'space-between',
-              alignItems: 'baseline',
-              borderBottomWidth: 1,
-              borderBottomColor: PLAN_COLORS.ink,
-              paddingBottom: 2,
-              marginBottom: 4,
-            }}
-          >
-            <Text style={[styles.kicker, { color: accentColor }]}>
-              08 * The build roadmap
-            </Text>
-            <Text style={styles.subTitleItalic}>The schedule</Text>
           </View>
 
-          {/* Side-by-side Columns (Up to 3 per row) */}
-          <View style={styles.scheduleGrid}>
-            {doc.roadmap.slice(0, 3).map((stage, idx) => {
-              const isFirst = idx === 0;
-              const isLast = idx === doc.roadmap.length - 1;
+          <View style={styles.panel}>
+            {/* 07 The Tool Stack */}
+            <View style={styles.sectionTitleRow}>
+              <View style={[styles.numberBadge, { backgroundColor: accentColor }]}>
+                <Text style={styles.numberBadgeText}>07</Text>
+              </View>
+              <Text style={styles.sectionTitle}>The tool stack</Text>
+            </View>
 
-              return (
-                <View
-                  key={`stage-${idx}`}
-                  style={[
-                    styles.scheduleCol,
-                    isFirst ? styles.scheduleColFirst : {},
-                    isLast ? styles.scheduleColLast : {},
-                  ]}
-                  wrap={false}
-                >
-                  <View style={styles.stageHeader}>
-                    <Text style={styles.stageNumeral}>0{idx + 1}</Text>
-                    {isFirst && <Text style={styles.stageTag}>Start today</Text>}
+            <View style={{ marginTop: 6, marginBottom: 14 }}>
+              {doc.toolStack.map((tool, idx) => {
+                const isFree = tool.freeOption === 'Yes';
+                const isPartly = tool.freeOption === 'Partly';
+                const dotColor = isFree ? '#2EAA7B' : isPartly ? '#F59E0B' : '#9CA3AF';
+
+                return (
+                  <View key={idx} style={styles.toolRow} wrap={false}>
+                    <View style={styles.toolColLeft}>
+                      <Text style={{ fontSize: 9.5, fontFamily: fontBold, color: '#111827' }}>
+                        {cleanPdfText(tool.name)}
+                      </Text>
+                      <Text style={{ fontSize: 8, color: '#6B7280', marginTop: 1 }}>
+                        Why: {cleanPdfText(tool.whyHere)}
+                      </Text>
+                    </View>
+
+                    <View style={styles.toolColMid}>
+                      <Text style={{ fontSize: 8.5, color: '#374151' }}>
+                        {cleanPdfText(tool.whatItDoes)}
+                      </Text>
+                    </View>
+
+                    <View style={styles.toolColRight}>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                        <Svg width="6" height="6" viewBox="0 0 6 6">
+                          <Circle cx="3" cy="3" r="3" fill={dotColor} />
+                        </Svg>
+                        <Text style={{ fontSize: 8, fontFamily: fontBold, color: '#1F2937' }}>
+                          Free: {tool.freeOption}
+                        </Text>
+                      </View>
+                      {tool.limitation && (
+                        <Text style={{ fontSize: 7.5, color: '#6B7280', marginTop: 1 }}>
+                          Watch out: {cleanPdfText(tool.limitation)}
+                        </Text>
+                      )}
+                    </View>
+                  </View>
+                );
+              })}
+            </View>
+
+            {/* 08 The Build Roadmap */}
+            <View style={[styles.sectionTitleRow, { marginTop: 8 }]}>
+              <View style={[styles.numberBadge, { backgroundColor: accentColor }]}>
+                <Text style={styles.numberBadgeText}>08</Text>
+              </View>
+              <Text style={styles.sectionTitle}>The build roadmap</Text>
+            </View>
+
+            <View style={styles.roadmapRow}>
+              {doc.roadmap.map((stage, idx) => (
+                <View key={idx} style={styles.stageTile} wrap={false}>
+                  <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 3 }}>
+                    <Text style={{ fontSize: 13, fontFamily: fontBold, color: accentColor }}>
+                      0{idx + 1}
+                    </Text>
+                    {idx === 0 && (
+                      <View style={{ backgroundColor: '#2EAA7B', paddingVertical: 1.5, paddingHorizontal: 5, borderRadius: 4 }}>
+                        <Text style={{ fontSize: 6.5, fontFamily: fontBold, color: '#FFFFFF' }}>Start today</Text>
+                      </View>
+                    )}
                   </View>
 
-                  <Text style={styles.stageTitle}>
+                  <Text style={{ fontSize: 9, fontFamily: fontBold, color: '#111827', marginBottom: 1 }}>
                     {cleanPdfText(stage.title)}
                   </Text>
-                  <Text style={styles.stageDuration}>
+                  <Text style={{ fontSize: 7.5, color: '#6B7280', marginBottom: 4 }}>
                     {cleanPdfText(stage.duration)}
                   </Text>
 
-                  <Text style={styles.stageGoal}>
+                  <Text style={{ fontSize: 8, color: '#374151', marginBottom: 4 }}>
                     Goal: {cleanPdfText(stage.goal)}
                   </Text>
 
-                  <Text style={styles.stageTasksHeader}>Action steps:</Text>
-                  {stage.tasks.map((task, taskIdx) => (
-                    <Text key={`task-${taskIdx}`} style={styles.taskItem}>
-                      * {cleanPdfText(task)}
-                    </Text>
-                  ))}
-
-                  <View style={styles.doneWhenBox}>
-                    <Text style={styles.doneWhenLabel}>Done when:</Text>
-                    <Text style={styles.doneWhenText}>
-                      {cleanPdfText(stage.doneWhen)}
-                    </Text>
+                  <View style={{ marginBottom: 4 }}>
+                    {stage.tasks.map((task, taskIdx) => (
+                      <Text key={taskIdx} style={{ fontSize: 7.5, color: '#4B5563', marginBottom: 1.5 }}>
+                        * {cleanPdfText(task)}
+                      </Text>
+                    ))}
                   </View>
+
+                  <Text style={{ fontSize: 7.5, color: '#111827', borderTopWidth: 1, borderTopColor: '#E5E7EB', paddingTop: 3 }}>
+                    Done when: {cleanPdfText(stage.doneWhen)}
+                  </Text>
                 </View>
-              );
-            })}
-          </View>
-        </View>
-
-        {/* ============================================================== */}
-        {/* 8. SECTION 09: THE AI STARTER PROMPT (THE DISPATCH)            */}
-        {/* ============================================================== */}
-        <View style={styles.dispatchSection}>
-          <View
-            style={{
-              flexDirection: 'row',
-              justifyContent: 'space-between',
-              alignItems: 'baseline',
-              borderBottomWidth: 1,
-              borderBottomColor: PLAN_COLORS.ink,
-              paddingBottom: 2,
-              marginBottom: 3,
-            }}
-          >
-            <Text style={[styles.kicker, { color: accentColor }]}>
-              09 * The AI starter prompt
-            </Text>
-            <Text style={styles.subTitleItalic}>The dispatch</Text>
-          </View>
-
-          <Text style={styles.dispatchLead}>
-            Paste this into your favorite AI tool to begin.
-          </Text>
-
-          {/* Dark ink block with cream Courier text */}
-          <View style={styles.dispatchBlock}>
-            <View style={styles.dispatchHeaderRow}>
-              <Text style={styles.dispatchHeaderLabel}>
-                Prompt specification  *  v1.0
-              </Text>
-              <Text style={styles.dispatchHeaderLabel}>Ready to paste</Text>
+              ))}
             </View>
 
-            <Text style={styles.dispatchPromptText}>
-              {cleanPdfText(doc.starterPrompt)}
+            {/* 09 The AI Starter Prompt */}
+            <View style={[styles.sectionTitleRow, { marginTop: 14 }]}>
+              <View style={[styles.numberBadge, { backgroundColor: accentColor }]}>
+                <Text style={styles.numberBadgeText}>09</Text>
+              </View>
+              <Text style={styles.sectionTitle}>The AI starter prompt</Text>
+            </View>
+
+            <Text style={{ fontSize: 8.5, color: '#4B5563', marginTop: 2 }}>
+              Paste this into your favorite AI tool to begin.
+            </Text>
+
+            <View style={styles.promptBlock}>
+              <Text style={styles.promptText}>
+                {cleanPrompt}
+              </Text>
+            </View>
+
+            {/* Disclaimer at end of document */}
+            <Text style={styles.disclaimer}>
+              This plan is a starting point. It doesn&apos;t guarantee your idea will succeed.
             </Text>
           </View>
-        </View>
-
-        {/* ============================================================== */}
-        {/* 9. FINE PRINT DISCLAIMER                                       */}
-        {/* ============================================================== */}
-        <View style={styles.finePrintSection} wrap={false}>
-          <Text style={styles.finePrintText}>
-            {cleanPdfText(doc.disclaimer)}
-          </Text>
-          <Text style={styles.finePrintBrand}>Start With This</Text>
         </View>
       </Page>
     </Document>

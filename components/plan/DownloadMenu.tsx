@@ -30,6 +30,8 @@ interface DownloadMenuProps {
   label?: string;
   className?: string;
   compact?: boolean;
+  variant?: 'default' | 'frosted' | 'dock';
+  forceUpward?: boolean;
 }
 
 type DownloadFormat = 'pdf' | 'html' | 'md';
@@ -72,6 +74,8 @@ export default function DownloadMenu({
   label = 'DOWNLOAD',
   className = '',
   compact = false,
+  variant = 'default',
+  forceUpward = false,
 }: DownloadMenuProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [isGeneratingPdf, setIsGeneratingPdf] = useState(false);
@@ -79,6 +83,7 @@ export default function DownloadMenu({
   const [pdfErrorMessage, setPdfErrorMessage] = useState<string | null>(null);
   const [focusedIndex, setFocusedIndex] = useState<number>(0);
   const [openUpward, setOpenUpward] = useState(false);
+  const shouldOpenUpward = forceUpward || openUpward;
   const [announcement, setAnnouncement] = useState('');
 
   const triggerRef = useRef<HTMLButtonElement>(null);
@@ -87,12 +92,13 @@ export default function DownloadMenu({
 
   // Calculate if menu should open upward or downward based on viewport position
   useEffect(() => {
+    if (forceUpward) return;
     if (isOpen && triggerRef.current) {
       const rect = triggerRef.current.getBoundingClientRect();
       const spaceBelow = window.innerHeight - rect.bottom;
       setOpenUpward(spaceBelow < 260 && rect.top > 260);
     }
-  }, [isOpen]);
+  }, [isOpen, forceUpward]);
 
   // Click outside listener
   useEffect(() => {
@@ -274,38 +280,99 @@ export default function DownloadMenu({
         {announcement}
       </div>
 
-      {/* Main trigger button: Outlined ink pill */}
-      <button
-        ref={triggerRef}
-        type="button"
-        id="download-menu-trigger"
-        aria-haspopup="menu"
-        aria-expanded={isOpen}
-        aria-controls={isOpen ? 'download-menu-dropdown' : undefined}
-        disabled={isGeneratingPdf}
-        onClick={() => {
-          setPdfErrorMessage(null);
-          setFocusedIndex(0);
-          setIsOpen(!isOpen);
-        }}
-        className={`inline-flex items-center justify-center gap-1.5 rounded-full border border-stone-800 hover:border-black active:border-black bg-white hover:bg-stone-50 active:bg-stone-100 text-[#1F2421] font-bold uppercase tracking-wider transition-all duration-150 select-none cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1F2421] focus-visible:ring-offset-2 ${
-          compact
-            ? 'px-3.5 py-1.5 text-[11px] sm:text-xs'
-            : 'px-5 sm:px-6 py-2.5 text-xs sm:text-sm'
-        } ${downloadSuccessText ? 'border-emerald-600 text-emerald-800 bg-emerald-50' : ''}`}
-      >
-        {downloadSuccessText ? (
-          <Check className="w-3.5 h-3.5 text-emerald-600 stroke-[2.5]" />
-        ) : (
-          <FileDown className="w-3.5 h-3.5 stroke-[2.2] text-[#1F2421]" />
-        )}
-        <span>{buttonLabel}</span>
-        <ChevronDown
-          className={`w-3.5 h-3.5 text-stone-600 transition-transform duration-200 ${
-            isOpen ? 'rotate-180' : ''
-          }`}
-        />
-      </button>
+      {/* Trigger button based on variant */}
+      {variant === 'dock' ? (
+        <button
+          ref={triggerRef}
+          type="button"
+          id="download-menu-trigger"
+          aria-haspopup="menu"
+          aria-expanded={isOpen}
+          aria-controls={isOpen ? 'download-menu-dropdown' : undefined}
+          disabled={isGeneratingPdf}
+          onClick={() => {
+            setPdfErrorMessage(null);
+            setFocusedIndex(0);
+            setIsOpen(!isOpen);
+          }}
+          className="group flex flex-col items-center justify-center gap-1 px-3 sm:px-4 py-1.5 rounded-2xl text-white/80 hover:text-white transition-all select-none cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white"
+        >
+          <div className="w-8 h-8 rounded-full bg-white/15 group-hover:bg-white/25 flex items-center justify-center transition-all group-hover:scale-105 active:scale-95 shadow-sm">
+            {downloadSuccessText ? (
+              <Check className="w-4 h-4 text-[#65D9B3] stroke-[2.5]" />
+            ) : (
+              <FileDown className="w-4 h-4 text-white stroke-[2.2]" />
+            )}
+          </div>
+          <span className="text-[11px] sm:text-xs font-semibold tracking-wide text-white/90">
+            Download
+          </span>
+        </button>
+      ) : variant === 'frosted' ? (
+        <button
+          ref={triggerRef}
+          type="button"
+          id="download-menu-trigger"
+          aria-haspopup="menu"
+          aria-expanded={isOpen}
+          aria-controls={isOpen ? 'download-menu-dropdown' : undefined}
+          disabled={isGeneratingPdf}
+          onClick={() => {
+            setPdfErrorMessage(null);
+            setFocusedIndex(0);
+            setIsOpen(!isOpen);
+          }}
+          className={`inline-flex items-center justify-center gap-2 rounded-full border border-white/50 hover:border-white bg-white/20 hover:bg-white/30 active:bg-white/40 backdrop-blur-md text-white font-bold tracking-wider uppercase transition-all duration-200 select-none cursor-pointer shadow-lg hover:scale-105 active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white ${
+            compact
+              ? 'px-4 py-2 text-sm'
+              : 'px-6 sm:px-8 py-3.5 sm:py-4 text-sm sm:text-base'
+          } ${downloadSuccessText ? 'border-[#65D9B3] text-[#65D9B3] bg-emerald-500/20' : ''}`}
+        >
+          {downloadSuccessText ? (
+            <Check className="w-4 h-4 text-[#65D9B3] stroke-[2.5]" />
+          ) : (
+            <FileDown className="w-4 h-4 text-white stroke-[2.2]" />
+          )}
+          <span>{buttonLabel}</span>
+          <ChevronDown
+            className={`w-4 h-4 text-white/80 transition-transform duration-200 ${
+              isOpen ? 'rotate-180' : ''
+            }`}
+          />
+        </button>
+      ) : (
+        <button
+          ref={triggerRef}
+          type="button"
+          id="download-menu-trigger"
+          aria-haspopup="menu"
+          aria-expanded={isOpen}
+          aria-controls={isOpen ? 'download-menu-dropdown' : undefined}
+          disabled={isGeneratingPdf}
+          onClick={() => {
+            setPdfErrorMessage(null);
+            setFocusedIndex(0);
+            setIsOpen(!isOpen);
+          }}
+          className={`inline-flex items-center justify-center gap-1.5 rounded-full border border-stone-800 hover:border-black active:border-black bg-white hover:bg-stone-50 active:bg-stone-100 text-[#1F2421] font-bold uppercase tracking-wider transition-all duration-150 select-none cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1F2421] focus-visible:ring-offset-2 ${
+            compact
+              ? 'px-3.5 py-1.5 text-xs'
+              : 'px-5 sm:px-6 py-2.5 text-xs sm:text-sm'
+          } ${downloadSuccessText ? 'border-emerald-600 text-emerald-800 bg-emerald-50' : ''}`}
+        >
+          {downloadSuccessText ? (
+            <Check className="w-3.5 h-3.5 text-emerald-600 stroke-[2.5]" />
+          ) : (
+            <FileDown className="w-3.5 h-3.5 stroke-[2.2] text-[#1F2421]" />
+          )}
+          <span>{buttonLabel}</span>
+          <ChevronDown
+            className={`w-3.5 h-3.5 text-stone-600 transition-transform duration-200 ${
+              isOpen ? 'rotate-180' : ''
+            }`}
+          />
+        </button>
+      )}
 
       {/* Desktop & Tablet Dropdown Menu / Mobile Bottom Sheet */}
       {isOpen && (
@@ -327,7 +394,7 @@ export default function DownloadMenu({
             className={`
               fixed sm:absolute z-50
               sm:right-0 sm:w-72
-              bg-[#FDFCF9] border border-stone-300 rounded-2xl sm:rounded-xl shadow-2xl p-1.5
+              bg-white/95 backdrop-blur-xl border border-zinc-200/80 rounded-2xl shadow-2xl p-1.5
               animate-in fade-in duration-150
               ${
                 /* Mobile: Bottom Sheet above safe area */
@@ -335,13 +402,13 @@ export default function DownloadMenu({
               }
               ${
                 /* Desktop: Upward vs Downward position */
-                openUpward ? 'sm:bottom-full sm:mb-2' : 'sm:top-full sm:mt-2'
+                shouldOpenUpward ? 'sm:bottom-full sm:mb-2' : 'sm:top-full sm:mt-2'
               }
             `}
           >
             {/* Header title on mobile sheet */}
-            <div className="sm:hidden px-3 pt-2 pb-1.5 border-b border-stone-200 mb-1">
-              <span className="text-xs font-mono font-bold uppercase tracking-wider text-stone-500">
+            <div className="sm:hidden px-3 pt-2 pb-1.5 border-b border-zinc-200 mb-1">
+              <span className="text-xs font-bold uppercase tracking-wider text-zinc-500">
                 Download Build Plan
               </span>
             </div>
@@ -363,21 +430,21 @@ export default function DownloadMenu({
                     tabIndex={isFocused ? 0 : -1}
                     onClick={() => handleSelectOption(opt.format)}
                     onMouseEnter={() => setFocusedIndex(idx)}
-                    className={`w-full text-left p-3 rounded-lg sm:rounded-md transition-colors flex items-start gap-3 select-none cursor-pointer min-h-[44px] ${
+                    className={`w-full text-left p-3 rounded-xl transition-colors flex items-start gap-3 select-none cursor-pointer min-h-[44px] ${
                       isFocused
-                        ? 'bg-stone-200/70 text-stone-950 ring-1 ring-stone-400'
-                        : 'hover:bg-stone-100 text-stone-800'
+                        ? 'bg-zinc-100 text-zinc-950 ring-1 ring-zinc-300'
+                        : 'hover:bg-zinc-50 text-zinc-800'
                     } focus-visible:outline-none`}
                   >
-                    <div className="p-1.5 rounded-md bg-stone-100 text-stone-700 mt-0.5 shrink-0">
+                    <div className="p-1.5 rounded-lg bg-zinc-100 text-zinc-700 mt-0.5 shrink-0">
                       <Icon className="w-4 h-4 stroke-[2]" />
                     </div>
 
                     <div className="flex-1 min-w-0">
-                      <span className="block font-sans font-bold text-xs sm:text-sm text-stone-900 leading-snug">
+                      <span className="block font-bold text-sm text-zinc-900 leading-snug">
                         {opt.title}
                       </span>
-                      <span className="block font-serif text-[11px] sm:text-xs text-stone-600 leading-tight mt-0.5">
+                      <span className="block text-xs sm:text-sm text-zinc-600 leading-tight mt-0.5 font-normal">
                         {opt.description}
                       </span>
                     </div>

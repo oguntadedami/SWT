@@ -60,6 +60,42 @@ h1, h2, h3, h4 {
   animation: shapeHopOnce 600ms cubic-bezier(0.16, 1, 0.3, 1) 200ms forwards;
 }
 
+@keyframes readyHopSquash {
+  0% {
+    transform: translateY(0) scale(1, 1);
+  }
+  15% {
+    transform: translateY(2px) scale(1.15, 0.85);
+  }
+  45% {
+    transform: translateY(-30px) scale(0.92, 1.12);
+  }
+  70% {
+    transform: translateY(-32px) scale(0.96, 1.08);
+  }
+  85% {
+    transform: translateY(2px) scale(1.1, 0.9);
+  }
+  100% {
+    transform: translateY(0) scale(1, 1);
+  }
+}
+
+.shape-hop-stagger-1 {
+  animation: readyHopSquash 700ms cubic-bezier(0.16, 1, 0.3, 1) 0.1s forwards;
+  transform-origin: bottom center;
+}
+
+.shape-hop-stagger-2 {
+  animation: readyHopSquash 700ms cubic-bezier(0.16, 1, 0.3, 1) 0.28s forwards;
+  transform-origin: bottom center;
+}
+
+.shape-hop-stagger-3 {
+  animation: readyHopSquash 700ms cubic-bezier(0.16, 1, 0.3, 1) 0.46s forwards;
+  transform-origin: bottom center;
+}
+
 @keyframes floatGentle {
   0%, 100% {
     transform: translateY(0px);
@@ -326,7 +362,10 @@ h1, h2, h3, h4 {
   .animate-marquee,
   .animate-sheet-rise,
   .animate-rule-draw,
-  .animate-shape-hop-once {
+  .animate-shape-hop-once,
+  .shape-hop-stagger-1,
+  .shape-hop-stagger-2,
+  .shape-hop-stagger-3 {
     transition: none !important;
     transform: none !important;
     animation: none !important;
