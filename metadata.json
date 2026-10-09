@@ -1,0 +1,8 @@
+{
+  "name": "Start With This",
+  "description": "Stuck on what to build? Start with what you already know. Tell us what you're good at. Get three ideas that fit your life, plus a plan to start building.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
